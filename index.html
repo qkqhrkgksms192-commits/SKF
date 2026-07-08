@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🥊%3C/text%3E%3C/svg%3E" />
+  <meta name="theme-color" content="#0b1020" />
+  <title>스틱맨 격투</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0b1020;
+      display: flex; justify-content: center; align-items: center;
+      min-height: 100vh; overflow: hidden;
+    }
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+      border: 2px solid #1a2238;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <script>
+    // ============================================================
+    // 캔버스 설정
+    // ============================================================
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // 가로로 긴 격투 게임 화면
+    const W = 900;
+    const H = 500;
+    canvas.width = W;
+    canvas.height = H;
+
+    // 화면 비율 유지하며 꽉 채우기
+    function resizeCanvas() {
+      const ratio = W / H;
+      let w = window.innerWidth * 0.95;
+      let h = window.innerHeight * 0.95;
+      if (w / h > ratio) { w = h * ratio; }
+      else { h = w / ratio; }
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // ============================================================
+    // 색상 팔레트 (네온)
+    // ============================================================
+    const COLORS = {
+      bg: '#0b1020',
+      point: '#22D3EE',
+      danger: '#F43F5E',
+      text: '#E7ECF6',
+      red: '#EF4444',
+      blue: '#3B82F6',
+      darkBg: '#0d1528',
+      cardBg: '#111B33',
+      selected: '#22D3EE',
+      confirm: '#10B981',
+    };
+
+    // ============================================================
+    // 게임 상태
+    // ============================================================
+    const STATE = { SELECT: 0, FIGHT: 1, RESULT: 2 };
+    let gameState = STATE.SELECT;
+
+    // 캐릭터 타입
+    const CHAR = { ATTACK: 0, DEFENSE: 1 };
+    const charNames = ['ATTACK', 'DEFENSE'];
+    const charLabels = ['공격형', '방어형'];
+    const charColors = [COLORS.red, COLORS.blue];
+
+    // 각 플레이어의 선택 상태
+    const p1 = { cursor: 0, confirmed: false };  // ATTACK 선택됨
+    const p2 = { cursor: 1, confirmed: false };  // DEFENSE 선택됨
+
+    // 키 입력 상태
+    const keys = {};
+
+    // 플레이어 변수 (startGame에서 생성)
+    let player1 = null;
+    let player2 = null;
+
+    // ============================================================
+    // 키 입력 처리
+    // ============================================================
+    document.addEventListener('keydown', (e) => {
+      keys[e.key] = true;
+    });
+
+    document.addEventListener('keyup', (e) => {
+      keys[e.key] = false;
+    });
+
+    // 키 반복 입력 방지 (200ms 간격)
+    let lastKeyTime = {};
+    function isKeyPressedOnce(key) {
+      const now = performance.now();
+      if (keys[key] && (now - (lastKeyTime[key] || 0) > 200)) {
+        lastKeyTime[key] = now;
+        return true;
+      }
+      return false;
+    }
+
+    // ============================================================
+    // 선택 화면 입력 처리
+    // ============================================================
+    function handleSelectInput(key) {
+      // P1 조작 (A, D, Space)
+      if (key === 'a' || key === 'A') {
+        if (!p1.confirmed) p1.cursor = CHAR.ATTACK;
+      }
+      if (key === 'd' || key === 'D') {
+        if (!p1.confirmed) p1.cursor = CHAR.DEFENSE;
+      }
+      if (key === ' ' && !p1.confirmed) {
+        p1.confirmed = true;
+      }
+
+      // P2 조작 (←, →, Enter)
+      if (key === 'ArrowLeft') {
+        if (!p2.confirmed) p2.cursor = CHAR.ATTACK;
+      }
+      if (key === 'ArrowRight') {
+        if (!p2.confirmed) p2.cursor = CHAR.DEFENSE;
+      }
+      if (key === 'Enter' && !p2.confirmed) {
+        p2.confirmed = true;
+      }
+
+      // 둘 다 선택 완료 → 게임 시작
+      if (p1.confirmed && p2.confirmed) {
+        startGame();
+      }
+    }
+
+    // ============================================================
+    // 게임 시작
+    // ============================================================
+    const GROUND_Y = 370;   // 바닥 Y 좌표 (스틱맨 커지면서 위로)
+    const SPEED = 2;        // 이동 속도 (원래 4의 절반)
+
+    function startGame() {
+      gameState = STATE.FIGHT;
+
+      // P1, P2 플레이어 생성 (각자 선택한 캐릭터 타입으로)
+      player1 = {
+        type: p1.cursor,
+        x: 150,
+        y: GROUND_Y,
+        hp: 100,
+        maxHp: 100,
+        facing: 1,  // 1=오른쪽, -1=왼쪽
+        moving: 0,  // -1=왼쪽, 0=정지, 1=오른쪽
+        walkCycle: 0,  // 걷는 모션용
+      };
+
+      player2 = {
+        type: p2.cursor,
+        x: W - 150,
+        y: GROUND_Y,
+        hp: 100,
+        maxHp: 100,
+        facing: -1,
+        moving: 0,
+        walkCycle: 0,
+      };
+    }
+
+    // ============================================================
+    // 게임 업데이트 (FIGHT 상태)
+    // ============================================================
+    function updateFight() {
+      // P1 이동 (A / D)
+      if (keys['a'] || keys['A']) { player1.moving = -1; }
+      else if (keys['d'] || keys['D']) { player1.moving = 1; }
+      else { player1.moving = 0; }
+
+      // P2 이동 (← / →)
+      if (keys['ArrowLeft']) { player2.moving = -1; }
+      else if (keys['ArrowRight']) { player2.moving = 1; }
+      else { player2.moving = 0; }
+
+      // 위치 업데이트 + 걷는 모션
+      [player1, player2].forEach(p => {
+        if (p.moving !== 0) {
+          p.x += p.moving * SPEED;
+          p.walkCycle += 0.08;
+        } else {
+          // 멈추면 천천히 기본 자세로 복귀
+          if (p.walkCycle > 0.01) p.walkCycle *= 0.85;
+          else p.walkCycle = 0;
+        }
+      });
+
+      // 화면 밖으로 나가지 않게
+      player1.x = Math.max(30, Math.min(W - 30, player1.x));
+      player2.x = Math.max(30, Math.min(W - 30, player2.x));
+
+      // 서로 통과하지 않게 (겹치면 밀어내기)
+      const minDist = 40;
+      const dist = player2.x - player1.x;
+      if (dist < minDist) {
+        const overlap = minDist - dist;
+        player1.x -= overlap / 2;
+        player2.x += overlap / 2;
+      }
+
+      // 바라보는 방향 (상대방 쪽으로)
+      if (player1.x < player2.x) { player1.facing = 1; }
+      else { player1.facing = -1; }
+      if (player2.x > player1.x) { player2.facing = -1; }
+      else { player2.facing = 1; }
+    }
+
+    // ============================================================
+    // 스틱맨 그리기 — 복싱 가드 자세 (팔 고정, 다리만 걷기)
+    // ============================================================
+    const S = 1.5;
+
+    function drawStickman(player) {
+      const { x, y, facing, type, walkCycle } = player;
+      const color = charColors[type];
+      const w = walkCycle;
+
+      ctx.imageSmoothingEnabled = false;
+
+      const legSwing = Math.sin(w) * 12;
+      const bodySway = Math.sin(w * 2) * 2;
+
+      ctx.save();
+      ctx.translate(Math.round(x + bodySway), Math.round(y));
+      ctx.scale(facing * S, S);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // 머리 (꽉 찬 원)
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(0, -48, 20, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      // 어깨
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(-8, -26);
+      ctx.lineTo(8, -26);
+      ctx.stroke();
+
+      // 몸통
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(0, -26);
+      ctx.quadraticCurveTo(6, 0, 0, 32);
+      ctx.stroke();
+
+      // 왼팔 (가드) — 항상 고정
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(-6, -23);
+      ctx.quadraticCurveTo(-16, -34, -12, -42);
+      ctx.stroke();
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(-12, -42, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 오른팔 (가드) — 항상 고정
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(6, -23);
+      ctx.quadraticCurveTo(16, -34, 12, -42);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(12, -42, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 왼다리 (걷기 모션)
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(0, 32);
+      ctx.quadraticCurveTo(-10 + legSwing, 52, -12 + legSwing, 72);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(Math.round(-12 + legSwing), Math.round(72));
+      ctx.lineTo(Math.round(-6 + legSwing), Math.round(72));
+      ctx.stroke();
+
+      // 오른다리 (걷기 모션)
+      ctx.beginPath();
+      ctx.moveTo(0, 32);
+      ctx.quadraticCurveTo(10 - legSwing, 52, 12 - legSwing, 72);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(Math.round(12 - legSwing), Math.round(72));
+      ctx.lineTo(Math.round(18 - legSwing), Math.round(72));
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    // ============================================================
+    // 게임 화면 그리기 (FIGHT 상태)
+    // ============================================================
+    function drawFight() {
+      // 배경
+      ctx.fillStyle = COLORS.bg;
+      ctx.fillRect(0, 0, W, H);
+
+      // 바닥 (발이 닿는 위치에 맞춤)
+      const groundSurface = GROUND_Y + 108;
+      ctx.fillStyle = '#1a2238';
+      ctx.fillRect(0, groundSurface, W, H - groundSurface);
+
+      // 바닥 라인
+      ctx.strokeStyle = '#2a3a5c';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, groundSurface);
+      ctx.lineTo(W, groundSurface);
+      ctx.stroke();
+
+      // 스틱맨 그리기
+      drawStickman(player1);
+      drawStickman(player2);
+
+      // 조작 안내
+      ctx.fillStyle = '#6B7280';
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('P1 [A/D] 이동  [W] 평타  [S] 스킬', 15, 25);
+      ctx.textAlign = 'right';
+      ctx.fillText('P2 [←/→] 이동  [↑] 평타  [↓] 스킬', W - 15, 25);
+    }
+
+    // ============================================================
+    // 그리기 함수들
+    // ============================================================
+
+    // --- 선택 화면 그리기 ---
+    function drawSelectScreen() {
+      // 배경
+      ctx.fillStyle = COLORS.bg;
+      ctx.fillRect(0, 0, W, H);
+
+      // 제목
+      ctx.textAlign = 'center';
+      ctx.fillStyle = COLORS.point;
+      ctx.font = 'bold 40px system-ui, sans-serif';
+      ctx.fillText('⚔️  스틱맨 격투  ⚔️', W / 2, 70);
+
+      // 부제목
+      ctx.fillStyle = COLORS.text;
+      ctx.font = '16px system-ui, sans-serif';
+      ctx.fillText('캐릭터를 선택하세요', W / 2, 105);
+
+      // 캐릭터 카드 2개 그리기
+      const cardW = 260;
+      const cardH = 220;
+      const gap = 40;
+      const totalW = cardW * 2 + gap;
+      const startX = (W - totalW) / 2;
+      const cardY = 150;
+
+      for (let i = 0; i < 2; i++) {
+        const x = startX + i * (cardW + gap);
+        const isP1 = p1.cursor === i;
+        const isP2 = p2.cursor === i;
+        const p1Confirmed = p1.confirmed;
+        const p2Confirmed = p2.confirmed;
+
+        // 카드 배경
+        ctx.fillStyle = COLORS.cardBg;
+        ctx.shadowColor = isP1 || isP2 ? charColors[i] : 'transparent';
+        ctx.shadowBlur = isP1 || isP2 ? 20 : 0;
+        ctx.beginPath();
+        ctx.roundRect(x, cardY, cardW, cardH, 12);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // 카드 테두리
+        ctx.strokeStyle = isP1 || isP2 ? charColors[i] : '#1a2238';
+        ctx.lineWidth = isP1 || isP2 ? 3 : 1;
+        ctx.beginPath();
+        ctx.roundRect(x, cardY, cardW, cardH, 12);
+        ctx.stroke();
+
+        // 선택 완료 표시
+        if (p1Confirmed && isP1) {
+          ctx.fillStyle = COLORS.confirm;
+          ctx.font = 'bold 14px system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('✅ P1 확정', x + cardW / 2, cardY + 30);
+        }
+        if (p2Confirmed && isP2) {
+          ctx.fillStyle = COLORS.confirm;
+          ctx.font = 'bold 14px system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('✅ P2 확정', x + cardW / 2, cardY + 48);
+        }
+
+        // 캐릭터 미리보기 (간단한 스틱맨)
+        const stickX = x + cardW / 2;
+        const stickY = cardY + 100;
+        drawStickmanPreview(stickX, stickY, i);
+
+        // 1P / 2P 표시 (누가 선택했는지)
+        const p1Here = p1.cursor === i && p1Confirmed;
+        const p2Here = p2.cursor === i && p2Confirmed;
+        if (p1Here || p2Here) {
+          ctx.font = 'bold 12px system-ui, sans-serif';
+          ctx.textAlign = 'left';
+          if (p1Here) {
+            ctx.fillStyle = COLORS.red;
+            ctx.fillText('1P', x + 12, cardY + 24);
+          }
+          if (p2Here) {
+            ctx.fillStyle = COLORS.blue;
+            ctx.fillText('2P', x + 12, cardY + 42);
+          }
+        }
+
+        // 캐릭터 이름
+        ctx.fillStyle = charColors[i];
+        ctx.font = 'bold 24px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(charNames[i], x + cardW / 2, cardY + 185);
+
+        // 한글 설명
+        ctx.fillStyle = COLORS.text;
+        ctx.font = '14px system-ui, sans-serif';
+        ctx.fillText(charLabels[i], x + cardW / 2, cardY + 208);
+
+        // P1 선택 표시 (▲)
+        if (isP1 && !p1Confirmed) {
+          ctx.fillStyle = charColors[0];
+          ctx.font = 'bold 22px system-ui, sans-serif';
+          ctx.fillText('▲', x + cardW / 2 - 16, cardY - 10);
+        }
+
+        // P2 선택 표시 (▼)
+        if (isP2 && !p2Confirmed) {
+          ctx.fillStyle = charColors[1];
+          ctx.font = 'bold 22px system-ui, sans-serif';
+          ctx.fillText('▼', x + cardW / 2 + 16, cardY - 10);
+        }
+      }
+
+      // 조작 안내
+      ctx.fillStyle = '#6B7280';
+      ctx.font = '14px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('P1  [A / D] 선택  [Space] 확정    |    P2  [← / →] 선택  [Enter] 확정', W / 2, 430);
+
+      // 대기 중 표시
+      if (!p1.confirmed || !p2.confirmed) {
+        ctx.fillStyle = COLORS.text;
+        ctx.font = '14px system-ui, sans-serif';
+        ctx.fillText('두 플레이어 모두 선택을 확정해야 게임이 시작됩니다', W / 2, 465);
+      } else {
+        ctx.fillStyle = COLORS.point;
+        ctx.font = 'bold 18px system-ui, sans-serif';
+        ctx.fillText('시작합니다!', W / 2, 465);
+      }
+    }
+
+    // --- 스틱맨 미리보기 (선택 화면용) ---
+    function drawStickmanPreview(x, y, type) {
+      const color = charColors[type];
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y - 40, 18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(x - 6, y - 22);
+      ctx.lineTo(x + 6, y - 22);
+      ctx.stroke();
+
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(x, y - 22);
+      ctx.quadraticCurveTo(x + 4, y, x, y + 28);
+      ctx.stroke();
+
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(x - 5, y - 20);
+      ctx.quadraticCurveTo(x - 14, y - 30, x - 10, y - 38);
+      ctx.stroke();
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x - 10, y - 38, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(x + 5, y - 20);
+      ctx.quadraticCurveTo(x + 14, y - 30, x + 10, y - 38);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x + 10, y - 38, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(x, y + 28);
+      ctx.quadraticCurveTo(x - 12, y + 48, x - 14, y + 68);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(Math.round(x - 14), Math.round(y + 68));
+      ctx.lineTo(Math.round(x - 8), Math.round(y + 68));
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(x, y + 28);
+      ctx.quadraticCurveTo(x + 12, y + 48, x + 14, y + 68);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(Math.round(x + 14), Math.round(y + 68));
+      ctx.lineTo(Math.round(x + 8), Math.round(y + 68));
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    // --- roundRect 헬퍼 ---
+    CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+      if (w < 2 * r) r = w / 2;
+      if (h < 2 * r) r = h / 2;
+      this.moveTo(x + r, y);
+      this.lineTo(x + w - r, y);
+      this.quadraticCurveTo(x + w, y, x + w, y + r);
+      this.lineTo(x + w, y + h - r);
+      this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      this.lineTo(x + r, y + h);
+      this.quadraticCurveTo(x, y + h, x, y + h - r);
+      this.lineTo(x, y + r);
+      this.quadraticCurveTo(x, y, x + r, y);
+      return this;
+    };
+
+    // ============================================================
+    // 메인 루프
+    // ============================================================
+    function update() {
+      if (gameState === STATE.SELECT) {
+        const keysToCheck = ['a', 'A', 'd', 'D', ' ', 'ArrowLeft', 'ArrowRight', 'Enter'];
+        for (const k of keysToCheck) {
+          if (isKeyPressedOnce(k)) {
+            handleSelectInput(k);
+          }
+        }
+      } else if (gameState === STATE.FIGHT) {
+        updateFight();
+      }
+    }
+
+    function draw() {
+      if (gameState === STATE.SELECT) {
+        drawSelectScreen();
+      } else if (gameState === STATE.FIGHT) {
+        drawFight();
+      }
+    }
+
+    function gameLoop(timestamp) {
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // 게임 시작!
+    requestAnimationFrame(gameLoop);
+  </script>
+</body>
+</html>
