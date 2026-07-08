@@ -145,8 +145,8 @@
     // ============================================================
     // 게임 시작
     // ============================================================
-    const GROUND_Y = 370;   // 바닥 Y 좌표 (스틱맨 커지면서 위로)
-    const SPEED = 2;        // 이동 속도 (원래 4의 절반)
+    const GROUND_Y = 360;   // 바닥 Y 좌표 (스틱맨 커지면서 위로)
+    const SPEED = 2;        // 이동 속도
 
     function startGame() {
       gameState = STATE.FIGHT;
@@ -222,7 +222,7 @@
     }
 
     // ============================================================
-    // 스틱맨 그리기 — 복싱 가드 자세 (팔 고정, 다리만 걷기)
+    // 스틱맨 그리기 — 각진 관절 + 전체 한 번에 윤곽선
     // ============================================================
     const S = 1.5;
 
@@ -232,83 +232,89 @@
       const w = walkCycle;
 
       ctx.imageSmoothingEnabled = false;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
 
-      const legSwing = Math.sin(w) * 12;
-      const bodySway = Math.sin(w * 2) * 2;
+      const legSwing = Math.sin(w) * 14;
+      const bodySway = Math.sin(w * 2) * 3;
 
       ctx.save();
       ctx.translate(Math.round(x + bodySway), Math.round(y));
       ctx.scale(facing * S, S);
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
 
-      // 머리 (꽉 찬 원)
-      ctx.fillStyle = color;
+      // ===== 1. 전체 검은 윤곽 (굵게) =====
+      ctx.strokeStyle = 'black';
+      ctx.lineWidth = 9;
+      ctx.fillStyle = 'black';
+
       ctx.beginPath();
-      ctx.arc(0, -48, 20, 0, Math.PI * 2);
+      ctx.arc(4, -46, 20, 0, Math.PI * 2);
       ctx.fill();
+      drawStickmanLines(ctx, legSwing);
+
+      // ===== 2. 위에 색상 덮기 (얇게) =====
       ctx.strokeStyle = color;
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-
-      // 어깨
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 5;
-      ctx.beginPath();
-      ctx.moveTo(-8, -26);
-      ctx.lineTo(8, -26);
-      ctx.stroke();
-
-      // 몸통
-      ctx.lineWidth = 5;
-      ctx.beginPath();
-      ctx.moveTo(0, -26);
-      ctx.quadraticCurveTo(6, 0, 0, 32);
-      ctx.stroke();
-
-      // 왼팔 (가드) — 항상 고정
       ctx.lineWidth = 6;
-      ctx.beginPath();
-      ctx.moveTo(-6, -23);
-      ctx.quadraticCurveTo(-16, -34, -12, -42);
-      ctx.stroke();
       ctx.fillStyle = color;
+
       ctx.beginPath();
-      ctx.arc(-12, -42, 4, 0, Math.PI * 2);
+      ctx.arc(4, -46, 17, 0, Math.PI * 2);
       ctx.fill();
-
-      // 오른팔 (가드) — 항상 고정
-      ctx.lineWidth = 6;
-      ctx.beginPath();
-      ctx.moveTo(6, -23);
-      ctx.quadraticCurveTo(16, -34, 12, -42);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(12, -42, 4, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 왼다리 (걷기 모션)
-      ctx.lineWidth = 6;
-      ctx.beginPath();
-      ctx.moveTo(0, 32);
-      ctx.quadraticCurveTo(-10 + legSwing, 52, -12 + legSwing, 72);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(Math.round(-12 + legSwing), Math.round(72));
-      ctx.lineTo(Math.round(-6 + legSwing), Math.round(72));
-      ctx.stroke();
-
-      // 오른다리 (걷기 모션)
-      ctx.beginPath();
-      ctx.moveTo(0, 32);
-      ctx.quadraticCurveTo(10 - legSwing, 52, 12 - legSwing, 72);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(Math.round(12 - legSwing), Math.round(72));
-      ctx.lineTo(Math.round(18 - legSwing), Math.round(72));
-      ctx.stroke();
+      drawStickmanLines(ctx, legSwing);
 
       ctx.restore();
+    }
+
+    // 스틱맨 팔·다리·몸통 라인 (윤곽/본선 공용)
+    function drawStickmanLines(ctx, legSwing) {
+
+      // 몸통
+      ctx.beginPath();
+      ctx.moveTo(0, -28);
+      ctx.lineTo(2, 28);
+      ctx.stroke();
+
+      // 뒷팔 (양손 가드) — 어깨→팔꿈치→주먹, 상대 쪽으로
+      ctx.beginPath();
+      ctx.moveTo(-5, -27);
+      ctx.lineTo(-4, -12);
+      ctx.lineTo(6, -38);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(6, -38, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 앞팔 (양손 가드)
+      ctx.beginPath();
+      ctx.moveTo(5, -26);
+      ctx.lineTo(14, -14);
+      ctx.lineTo(16, -36);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(16, -36, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 뒷다리
+      ctx.beginPath();
+      ctx.moveTo(0, 28);
+      ctx.lineTo(-8 + legSwing, 56);
+      ctx.lineTo(-10 + legSwing, 88);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-10 + legSwing, 88);
+      ctx.lineTo(-4 + legSwing, 88);
+      ctx.stroke();
+
+      // 앞다리
+      ctx.beginPath();
+      ctx.moveTo(0, 28);
+      ctx.lineTo(12 - legSwing, 54);
+      ctx.lineTo(16 - legSwing, 88);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(16 - legSwing, 88);
+      ctx.lineTo(10 - legSwing, 88);
+      ctx.stroke();
     }
 
     // ============================================================
@@ -320,7 +326,7 @@
       ctx.fillRect(0, 0, W, H);
 
       // 바닥 (발이 닿는 위치에 맞춤)
-      const groundSurface = GROUND_Y + 108;
+      const groundSurface = GROUND_Y + 128;
       ctx.fillStyle = '#1a2238';
       ctx.fillRect(0, groundSurface, W, H - groundSurface);
 
@@ -484,63 +490,106 @@
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
+      // 검은 윤곽
+      ctx.strokeStyle = 'black';
+      ctx.lineWidth = 7;
+      ctx.fillStyle = 'black';
+      ctx.beginPath();
+      ctx.arc(x + 2, y - 38, 19, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(x, y - 24);
+      ctx.lineTo(x + 1, y + 24);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(x - 3, y - 23);
+      ctx.lineTo(x - 2, y - 10);
+      ctx.lineTo(x + 4, y - 34);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x + 4, y - 34, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(x + 3, y - 22);
+      ctx.lineTo(x + 10, y - 12);
+      ctx.lineTo(x + 12, y - 32);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x + 12, y - 32, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(x, y + 24);
+      ctx.lineTo(x - 6, y + 48);
+      ctx.lineTo(x - 8, y + 72);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x - 8, y + 72);
+      ctx.lineTo(x - 3, y + 72);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(x, y + 24);
+      ctx.lineTo(x + 8, y + 46);
+      ctx.lineTo(x + 12, y + 72);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x + 12, y + 72);
+      ctx.lineTo(x + 7, y + 72);
+      ctx.stroke();
+
+      // 색상
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 5;
       ctx.fillStyle = color;
       ctx.beginPath();
-      ctx.arc(x, y - 40, 18, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(x - 6, y - 22);
-      ctx.lineTo(x + 6, y - 22);
-      ctx.stroke();
-
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(x, y - 22);
-      ctx.quadraticCurveTo(x + 4, y, x, y + 28);
-      ctx.stroke();
-
-      ctx.lineWidth = 5;
-      ctx.beginPath();
-      ctx.moveTo(x - 5, y - 20);
-      ctx.quadraticCurveTo(x - 14, y - 30, x - 10, y - 38);
-      ctx.stroke();
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(x - 10, y - 38, 3.5, 0, Math.PI * 2);
+      ctx.arc(x + 2, y - 38, 16, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.lineWidth = 5;
       ctx.beginPath();
-      ctx.moveTo(x + 5, y - 20);
-      ctx.quadraticCurveTo(x + 14, y - 30, x + 10, y - 38);
+      ctx.moveTo(x, y - 24);
+      ctx.lineTo(x + 1, y + 24);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(x - 3, y - 23);
+      ctx.lineTo(x - 2, y - 10);
+      ctx.lineTo(x + 4, y - 34);
       ctx.stroke();
       ctx.beginPath();
-      ctx.arc(x + 10, y - 38, 3.5, 0, Math.PI * 2);
+      ctx.arc(x + 4, y - 34, 3, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.lineWidth = 5;
       ctx.beginPath();
-      ctx.moveTo(x, y + 28);
-      ctx.quadraticCurveTo(x - 12, y + 48, x - 14, y + 68);
+      ctx.moveTo(x + 3, y - 22);
+      ctx.lineTo(x + 10, y - 12);
+      ctx.lineTo(x + 12, y - 32);
       ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(Math.round(x - 14), Math.round(y + 68));
-      ctx.lineTo(Math.round(x - 8), Math.round(y + 68));
+      ctx.arc(x + 12, y - 32, 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(x, y + 24);
+      ctx.lineTo(x - 6, y + 48);
+      ctx.lineTo(x - 8, y + 72);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x - 8, y + 72);
+      ctx.lineTo(x - 3, y + 72);
       ctx.stroke();
 
       ctx.beginPath();
-      ctx.moveTo(x, y + 28);
-      ctx.quadraticCurveTo(x + 12, y + 48, x + 14, y + 68);
+      ctx.moveTo(x, y + 24);
+      ctx.lineTo(x + 8, y + 46);
+      ctx.lineTo(x + 12, y + 72);
       ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(Math.round(x + 14), Math.round(y + 68));
-      ctx.lineTo(Math.round(x + 8), Math.round(y + 68));
+      ctx.moveTo(x + 12, y + 72);
+      ctx.lineTo(x + 7, y + 72);
       ctx.stroke();
 
       ctx.restore();
